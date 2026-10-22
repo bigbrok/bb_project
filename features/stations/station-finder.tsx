@@ -34,6 +34,7 @@ import { PlaceSearchForm } from "@/features/places/place-search-form";
 import { formatDistance, formatPrice } from "./format";
 import { LocationPicker, type PickedPosition } from "./location-picker";
 import { kakaoMapLink, kakaoMapUrl } from "./map-link";
+import { SearchMap } from "./search-map";
 import {
   DEFAULT_FUEL,
   DEFAULT_PLACE,
@@ -249,6 +250,14 @@ export function StationFinder() {
           </div>
         )}
       </header>
+
+      {state.kind === "done" && searchedAt && (
+        <SearchMap
+          key={`${searchedAt.lat},${searchedAt.lng}`}
+          lat={searchedAt.lat}
+          lng={searchedAt.lng}
+        />
+      )}
 
       <div className="flex items-center justify-between gap-3">
         <ToggleGroup

@@ -128,3 +128,17 @@
     @apply font-sans;
   }
 }
+/* Leaflet paths take their colors from the theme tokens. */
+.search-map-marker {
+  stroke: var(--background);
+  stroke-width: 2px;
+  fill: var(--primary);
+  fill-opacity: 1;
+}
+
+.search-map-radius {
+  stroke: var(--primary);
+  stroke-width: 1.5px;
+  fill: var(--primary);
+  fill-opacity: 0.08;
+}
