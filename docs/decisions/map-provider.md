@@ -3,7 +3,6 @@
 ## Decisions
 
 - 앱 안에 띄우는 지도는 카카오맵 JavaScript SDK(`dapi.kakao.com/v2/maps/sdk.js`)를 쓴다. 키는 공개용 환경 변수 `NEXT_PUBLIC_KAKAO_MAP_KEY`로 넣는다.
-- 장소 이름·주소로 위치를 찾을 때는 같은 SDK의 `services` 라이브러리(`Places.keywordSearch`, `Geocoder.addressSearch`)를 쓴다. 키를 따로 받지 않는다.
 - 외부 지도로 위치를 보여 줄 때는 카카오맵 웹 링크(`map.kakao.com/link/map/이름,위도,경도`)를 쓴다.
 
 ## Boundaries

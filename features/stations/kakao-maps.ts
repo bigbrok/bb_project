@@ -1,14 +1,7 @@
 // The subset of the Kakao Maps JavaScript SDK this app uses.
 export type KakaoLatLng = { getLat(): number; getLng(): number };
 
-export type KakaoMap = { setCenter(position: KakaoLatLng): void };
-
-type KakaoStatus = "OK" | "ZERO_RESULT" | "ERROR";
-
-/** A search result; x is longitude and y is latitude, both as strings. */
-type KakaoPlace = { x: string; y: string };
-
-type KakaoSearchCallback = (result: KakaoPlace[], status: KakaoStatus) => void;
+export type KakaoMap = object;
 
 export type KakaoMarker = {
   setPosition(position: KakaoLatLng): void;
@@ -29,15 +22,6 @@ export type KakaoMaps = {
       type: "click",
       handler: (event: { latLng: KakaoLatLng }) => void
     ): void;
-  };
-  services: {
-    Status: Record<KakaoStatus, KakaoStatus>;
-    Places: new () => {
-      keywordSearch(keyword: string, callback: KakaoSearchCallback): void;
-    };
-    Geocoder: new () => {
-      addressSearch(address: string, callback: KakaoSearchCallback): void;
-    };
   };
 };
 
@@ -61,7 +45,7 @@ export function loadKakaoMaps(): Promise<KakaoMaps> {
 
   pending ??= new Promise<KakaoMaps>((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&libraries=services&autoload=false`;
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&autoload=false`;
     script.async = true;
     const fail = () => {
       pending = null;
@@ -76,31 +60,4 @@ export function loadKakaoMaps(): Promise<KakaoMaps> {
     document.head.append(script);
   });
   return pending;
-}
-
-/**
- * Finds a position for a place name or an address: tries a place search
- * first and falls back to an address search. Null when neither finds it.
- */
-export function findPlace(
-  maps: KakaoMaps,
-  query: string
-): Promise<{ lat: number; lng: number } | null> {
-  const { services } = maps;
-  const firstHit: (result: KakaoPlace[], status: KakaoStatus) => KakaoPlace | null = (
-    result,
-    status
-  ) => (status === services.Status.OK && result[0] ? result[0] : null);
-  const toPosition = (place: KakaoPlace) => ({ lat: Number(place.y), lng: Number(place.x) });
-
-  return new Promise((resolve) => {
-    new services.Places().keywordSearch(query, (result, status) => {
-      const place = firstHit(result, status);
-      if (place) return resolve(toPosition(place));
-      new services.Geocoder().addressSearch(query, (addresses, addressStatus) => {
-        const address = firstHit(addresses, addressStatus);
-        resolve(address ? toPosition(address) : null);
-      });
-    });
-  });
 }

@@ -29,9 +29,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-import { formatDistance, formatPrice } from "./format";
 import { PlaceSearchForm } from "@/features/places/place-search-form";
 
+import { formatDistance, formatPrice } from "./format";
 import { LocationPicker, type PickedPosition } from "./location-picker";
 import { kakaoMapLink, kakaoMapUrl } from "./map-link";
 import {
@@ -190,13 +190,11 @@ export function StationFinder() {
         <h1 className="font-heading text-2xl font-semibold tracking-tight">
           근처 최저가 주유소
         </h1>
-        {state.kind !== "picking" && (
-          <div className="py-2">
-            <PlaceSearchForm
-              onFound={(place, query) => searchFrom({ kind: "place", name: query, ...place })}
-            />
-          </div>
-        )}
+        <div className="py-2">
+          <PlaceSearchForm
+            onFound={(place, query) => searchFrom({ kind: "place", name: query, ...place })}
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-x-3">
           <p className="text-sm text-muted-foreground">
             {originLabel(origin)} 반경 2km · 가격 낮은 순

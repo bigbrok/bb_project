@@ -22,31 +22,11 @@ class FakeLatLng {
 
 let mapClick: ((event: { latLng: FakeLatLng }) => void) | undefined;
 let markers: { position: FakeLatLng; map: unknown }[];
-let mapCenter: FakeLatLng | undefined;
 let initialCenter: FakeLatLng | undefined;
-
-type FakePlace = { x: string; y: string };
-// Search results the fake SDK returns, keyed by the exact query.
-let keywordResults: Record<string, FakePlace[]>;
-let addressResults: Record<string, FakePlace[]>;
-let keywordQueries: string[];
-let addressQueries: string[];
-
-const Status = { OK: "OK", ZERO_RESULT: "ZERO_RESULT", ERROR: "ERROR" };
-
-function respond(table: Record<string, FakePlace[]>, query: string) {
-  const found = table[query] ?? [];
-  return [found, found.length ? Status.OK : Status.ZERO_RESULT] as const;
-}
 
 function installFakeKakao() {
   mapClick = undefined;
   markers = [];
-  mapCenter = undefined;
-  keywordResults = {};
-  addressResults = {};
-  keywordQueries = [];
-  addressQueries = [];
   vi.stubGlobal("kakao", {
     maps: {
       load: (callback: () => void) => callback(),
@@ -58,24 +38,6 @@ function installFakeKakao() {
         ) {
           initialCenter = options.center;
         }
-        setCenter(position: FakeLatLng) {
-          mapCenter = position;
-        }
-      },
-      services: {
-        Status,
-        Places: class {
-          keywordSearch(query: string, callback: (...args: unknown[]) => void) {
-            keywordQueries.push(query);
-            callback(...respond(keywordResults, query));
-          }
-        },
-        Geocoder: class {
-          addressSearch(query: string, callback: (...args: unknown[]) => void) {
-            addressQueries.push(query);
-            callback(...respond(addressResults, query));
-          }
-        },
       },
       Marker: class {
         position: FakeLatLng;
@@ -134,13 +96,6 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function lookUp(query: string) {
-  fireEvent.change(screen.getByRole("textbox", { name: "장소 또는 주소" }), {
-    target: { value: query },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "조회" }));
-}
-
 const PICKED_STATION = { id: "A", name: "고른곳주유소", price: 1700, distance: 300, lat: 37.5, lng: 127 };
 
 /** Location is unavailable, so the default place loads first; then open the picker. */
@@ -157,11 +112,9 @@ function searchedPosition(call: number) {
   return [url.searchParams.get("lat"), url.searchParams.get("lng")];
 }
 
-test("위치 바꾸기를 누르면 입력창과 지도가 열리고, 고르거나 조회하기 전에는 검색할 수 없다", async () => {
+test("위치 바꾸기를 누르면 지도가 열리고, 지도에서 고르기 전에는 검색할 수 없다", async () => {
   await openPicker();
 
-  expect(screen.getByRole("textbox", { name: "장소 또는 주소" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "조회" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "이 위치로 검색" })).toBeDisabled();
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
@@ -239,56 +192,23 @@ async function openPickerExpectingFailure() {
   fireEvent.click(await screen.findByRole("button", { name: "위치 바꾸기" }));
 }
 
-test("장소 이름을 조회하면 지도를 그 위치로 옮겨 마커를 놓고, 이 위치로 검색할 수 있다", async () => {
-  keywordResults["강남역"] = [{ x: "127.0276", y: "37.4979" }];
-  fetchMock.mockResolvedValue(
-    stationsResponse([{ id: "A", name: "조회한곳주유소", price: 1700, distance: 300, lat: 37.5, lng: 127 }])
+test("위치 바꾸기 화면에는 조회 입력창이 따로 없고, 제목 아래 입력창으로 조회하면 그 장소 목록으로 바뀐다", async () => {
+  await openPicker();
+
+  expect(screen.queryByRole("textbox", { name: "장소 또는 주소" })).not.toBeInTheDocument();
+  expect(screen.getAllByRole("textbox")).toHaveLength(1);
+
+  fetchMock.mockImplementation(async (input: string) =>
+    new URL(input, "http://localhost").pathname === "/api/geocode"
+      ? new Response(JSON.stringify({ place: { lat: 37.5547, lng: 126.9707, label: "서울역" } }))
+      : stationsResponse([PICKED_STATION])
   );
-  await openPicker();
-  lookUp("강남역");
+  fireEvent.change(screen.getByRole("textbox", { name: "장소 검색" }), {
+    target: { value: "서울역" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "조회" }));
 
-  expect(keywordQueries).toEqual(["강남역"]);
-  await waitFor(() =>
-    expect([mapCenter?.getLat(), mapCenter?.getLng()]).toEqual([37.4979, 127.0276])
-  );
-  expect(markers).toHaveLength(1);
-  expect([markers[0].position.getLat(), markers[0].position.getLng()]).toEqual([37.4979, 127.0276]);
-  expect(fetchMock).toHaveBeenCalledTimes(1);
-
-  fireEvent.click(screen.getByRole("button", { name: "이 위치로 검색" }));
-  expect(await screen.findByText("조회한곳주유소")).toBeInTheDocument();
-  expect(searchedPosition(1)).toEqual(["37.4979", "127.0276"]);
-});
-
-test("입력창에서 Enter를 쳐도 조회한다", async () => {
-  keywordResults["서울역"] = [{ x: "126.9707", y: "37.5547" }];
-  await openPicker();
-  const input = screen.getByRole("textbox", { name: "장소 또는 주소" });
-  fireEvent.change(input, { target: { value: "서울역" } });
-  fireEvent.submit(input);
-
-  expect(keywordQueries).toEqual(["서울역"]);
-  await waitFor(() => expect(mapCenter?.getLat()).toBe(37.5547));
-});
-
-test("장소 이름으로 찾지 못하면 주소로 다시 찾는다", async () => {
-  addressResults["서울 중구 세종대로 110"] = [{ x: "126.978", y: "37.5665" }];
-  await openPicker();
-  lookUp("서울 중구 세종대로 110");
-
-  expect(addressQueries).toEqual(["서울 중구 세종대로 110"]);
-  await waitFor(() =>
-    expect([mapCenter?.getLat(), mapCenter?.getLng()]).toEqual([37.5665, 126.978])
-  );
-  expect(markers).toHaveLength(1);
-});
-
-test("조회 결과가 없으면 입력한 말과 함께 찾지 못했다고 알리고 마커는 그대로 둔다", async () => {
-  await openPicker();
-  clickMap(37.5, 127.01);
-  lookUp("없는곳");
-
-  expect(await screen.findByText("'없는곳' 위치를 찾지 못했습니다.")).toBeInTheDocument();
-  expect([markers[0].position.getLat(), markers[0].position.getLng()]).toEqual([37.5, 127.01]);
-  expect(screen.getByRole("button", { name: "이 위치로 검색" })).toBeEnabled();
+  expect(await screen.findByText("고른곳주유소")).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "위치 고르기 지도" })).not.toBeInTheDocument();
+  expect(screen.getByText(/서울역 반경 2km/)).toBeInTheDocument();
 });
