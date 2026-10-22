@@ -163,7 +163,7 @@ test("위치를 얻지 못하면 위치가 필요하다고 안내하고 다시 �
 
   render(<StationFinder />);
 
-  expect(await screen.findByText("현재 위치가 필요합니다")).toBeInTheDocument();
+  expect(await screen.findByText("현재 위치를 알 수 없습니다")).toBeInTheDocument();
   expect(fetchMock).not.toHaveBeenCalled();
 
   allowLocation();

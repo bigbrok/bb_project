@@ -30,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { formatDistance, formatPrice } from "./format";
+import { LocationPicker, type PickedPosition } from "./location-picker";
 import { kakaoMapUrl } from "./map-link";
 import { DEFAULT_FUEL, isFuelType, type FuelType, type Station } from "./types";
 
@@ -41,8 +42,14 @@ const FUEL_LABELS: Record<FuelType, string> = {
 type SearchState =
   | { kind: "loading" }
   | { kind: "location-error" }
+  | { kind: "picking" }
   | { kind: "price-error" }
   | { kind: "done"; stations: Station[] };
+
+/** Where a search is centered: the device's position or one picked on the map. */
+type SearchOrigin = { kind: "current" } | ({ kind: "picked" } & PickedPosition);
+
+const CURRENT_POSITION: SearchOrigin = { kind: "current" };
 
 function getPosition() {
   return new Promise<GeolocationPosition>((resolve, reject) => {
@@ -58,17 +65,25 @@ function getPosition() {
   });
 }
 
-async function findStations(fuel: FuelType): Promise<SearchState> {
-  let position: GeolocationPosition;
-  try {
-    position = await getPosition();
-  } catch {
-    return { kind: "location-error" };
+async function findStations(
+  fuel: FuelType,
+  origin: SearchOrigin
+): Promise<SearchState> {
+  let position: PickedPosition;
+  if (origin.kind === "picked") {
+    position = origin;
+  } else {
+    try {
+      const { coords } = await getPosition();
+      position = { lat: coords.latitude, lng: coords.longitude };
+    } catch {
+      return { kind: "location-error" };
+    }
   }
 
   const params = new URLSearchParams({
-    lat: String(position.coords.latitude),
-    lng: String(position.coords.longitude),
+    lat: String(position.lat),
+    lng: String(position.lng),
     fuel,
   });
 
@@ -84,35 +99,49 @@ async function findStations(fuel: FuelType): Promise<SearchState> {
 
 export function StationFinder() {
   const [fuel, setFuel] = useState<FuelType>(DEFAULT_FUEL);
+  const [origin, setOrigin] = useState<SearchOrigin>(CURRENT_POSITION);
   const [state, setState] = useState<SearchState>({ kind: "loading" });
   // Ignores responses from searches that a newer search has replaced.
   const latestSearch = useRef(0);
 
-  const runSearch = useCallback((fuelType: FuelType) => {
+  const runSearch = useCallback((fuelType: FuelType, from: SearchOrigin) => {
     const searchId = ++latestSearch.current;
-    return findStations(fuelType).then((result) => {
+    return findStations(fuelType, from).then((result) => {
       if (searchId === latestSearch.current) setState(result);
     });
   }, []);
 
   const search = useCallback(
-    (fuelType: FuelType) => {
+    (fuelType: FuelType, from: SearchOrigin) => {
       setState({ kind: "loading" });
-      void runSearch(fuelType);
+      void runSearch(fuelType, from);
     },
     [runSearch]
   );
 
   useEffect(() => {
-    void runSearch(DEFAULT_FUEL);
+    void runSearch(DEFAULT_FUEL, CURRENT_POSITION);
   }, [runSearch]);
 
   function handleFuelChange(value: string[]) {
     const next = value[0];
     if (!next || !isFuelType(next) || next === fuel) return;
     setFuel(next);
-    search(next);
+    search(next, origin);
   }
+
+  function searchFrom(from: SearchOrigin) {
+    setOrigin(from);
+    search(fuel, from);
+  }
+
+  function startPicking() {
+    // Drops any in-flight search so its result cannot replace the map.
+    latestSearch.current++;
+    setState({ kind: "picking" });
+  }
+
+  const usingPicked = origin.kind === "picked";
 
   return (
     <div className="flex flex-col gap-6">
@@ -120,9 +149,16 @@ export function StationFinder() {
         <h1 className="font-heading text-2xl font-semibold tracking-tight">
           근처 최저가 주유소
         </h1>
-        <p className="text-sm text-muted-foreground">
-          현재 위치 반경 2km · 가격 낮은 순
-        </p>
+        <div className="flex flex-wrap items-center gap-x-2">
+          <p className="text-sm text-muted-foreground">
+            {usingPicked ? "고른 위치" : "현재 위치"} 반경 2km · 가격 낮은 순
+          </p>
+          {usingPicked && state.kind !== "picking" && (
+            <Button variant="link" size="sm" className="px-0" onClick={startPicking}>
+              위치 다시 고르기
+            </Button>
+          )}
+        </div>
       </header>
 
       <div className="flex items-center justify-between gap-3">
@@ -140,7 +176,7 @@ export function StationFinder() {
         </ToggleGroup>
         <Button
           variant="outline"
-          onClick={() => search(fuel)}
+          onClick={() => search(fuel, origin)}
           disabled={state.kind === "loading"}
         >
           <RefreshCwIcon data-icon="inline-start" />
@@ -148,7 +184,13 @@ export function StationFinder() {
         </Button>
       </div>
 
-      <SearchResult state={state} fuel={fuel} onRetry={() => search(fuel)} />
+      <SearchResult
+        state={state}
+        fuel={fuel}
+        onRetry={() => search(fuel, origin)}
+        onRetryCurrentPosition={() => searchFrom(CURRENT_POSITION)}
+        onPick={(position) => searchFrom({ kind: "picked", ...position })}
+      />
     </div>
   );
 }
@@ -195,10 +237,14 @@ function SearchResult({
   state,
   fuel,
   onRetry,
+  onRetryCurrentPosition,
+  onPick,
 }: {
   state: SearchState;
   fuel: FuelType;
   onRetry: () => void;
+  onRetryCurrentPosition: () => void;
+  onPick: (position: PickedPosition) => void;
 }) {
   switch (state.kind) {
     case "loading":
@@ -212,19 +258,24 @@ function SearchResult({
       );
     case "location-error":
       return (
-        <Alert>
-          <MapPinOffIcon />
-          <AlertTitle>현재 위치가 필요합니다</AlertTitle>
-          <AlertDescription>
-            브라우저에서 위치 권한을 허용한 뒤 다시 시도해 주세요.
-          </AlertDescription>
-          <AlertAction>
-            <Button size="sm" variant="outline" onClick={onRetry}>
-              다시 시도
-            </Button>
-          </AlertAction>
-        </Alert>
+        <div className="flex flex-col gap-4">
+          <Alert>
+            <MapPinOffIcon />
+            <AlertTitle>현재 위치를 알 수 없습니다</AlertTitle>
+            <AlertDescription>
+              브라우저에서 위치 권한을 허용한 뒤 다시 시도해 주세요.
+            </AlertDescription>
+            <AlertAction>
+              <Button size="sm" variant="outline" onClick={onRetryCurrentPosition}>
+                다시 시도
+              </Button>
+            </AlertAction>
+          </Alert>
+          <LocationPicker onSearch={onPick} />
+        </div>
       );
+    case "picking":
+      return <LocationPicker onSearch={onPick} />;
     case "price-error":
       return (
         <Alert variant="destructive">
