@@ -115,7 +115,7 @@ test("위치가 없는 주유소는 목록에 보이되 지도 링크가 없다"
   render(<StationFinder />);
 
   expect(await screen.findByText("좌표없음")).toBeInTheDocument();
-  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  expect(within(screen.getByRole("listitem")).queryByRole("link")).not.toBeInTheDocument();
 });
 
 test("경유로 바꾸면 경유 기준으로 다시 검색한다", async () => {
@@ -258,4 +258,36 @@ test("다시 검색하면 현재 위치를 새로 얻어 목록을 갱신한다"
 
   expect(await screen.findByText("새주유소")).toBeInTheDocument();
   expect(getCurrentPosition).toHaveBeenCalledTimes(2);
+});
+
+test("마곡나루역 기준 목록에서 지도에서 보기를 누르면 카카오맵 웹으로 마곡나루역을 연다", async () => {
+  getCurrentPosition.mockImplementationOnce(
+    (_success: PositionCallback, error: PositionErrorCallback) =>
+      error({ code: 1, message: "denied" } as GeolocationPositionError)
+  );
+  fetchMock.mockResolvedValue(
+    stationsResponse([{ id: "A", name: "마곡주유소", price: 1650, distance: 400 }])
+  );
+
+  render(<StationFinder />);
+
+  const link = await screen.findByRole("link", { name: /마곡나루역 지도에서 보기/ });
+  expect(link).toHaveAttribute(
+    "href",
+    `https://map.kakao.com/link/map/${encodeURIComponent("마곡나루역")},37.5668,126.827`
+  );
+  expect(link).toHaveAttribute("target", "_blank");
+});
+
+test("현재 위치 기준 목록에서는 지도에서 보기가 현재 위치를 연다", async () => {
+  allowLocation();
+  fetchMock.mockResolvedValue(stationsResponse([]));
+
+  render(<StationFinder />);
+
+  const link = await screen.findByRole("link", { name: /현재 위치 지도에서 보기/ });
+  expect(link).toHaveAttribute(
+    "href",
+    `https://map.kakao.com/link/map/${encodeURIComponent("현재 위치")},37.4979,127.0276`
+  );
 });

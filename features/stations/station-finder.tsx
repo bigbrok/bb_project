@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Empty,
   EmptyDescription,
@@ -31,7 +31,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { formatDistance, formatPrice } from "./format";
 import { LocationPicker, type PickedPosition } from "./location-picker";
-import { kakaoMapUrl } from "./map-link";
+import { kakaoMapLink, kakaoMapUrl } from "./map-link";
 import {
   DEFAULT_FUEL,
   DEFAULT_PLACE,
@@ -89,7 +89,7 @@ function getPosition() {
 async function findStations(
   fuel: FuelType,
   origin: SearchOrigin
-): Promise<{ state: SearchState; origin: SearchOrigin }> {
+): Promise<{ state: SearchState; origin: SearchOrigin; position: PickedPosition }> {
   let position: PickedPosition = DEFAULT_PLACE;
   let usedOrigin = origin;
   if (origin.kind === "picked") {
@@ -113,9 +113,13 @@ async function findStations(
     const res = await fetch(`/api/stations?${params}`);
     if (!res.ok) throw new Error(`Search failed: ${res.status}`);
     const body = (await res.json()) as { stations: Station[] };
-    return { state: { kind: "done", stations: body.stations }, origin: usedOrigin };
+    return {
+      state: { kind: "done", stations: body.stations },
+      origin: usedOrigin,
+      position,
+    };
   } catch {
-    return { state: { kind: "price-error" }, origin: usedOrigin };
+    return { state: { kind: "price-error" }, origin: usedOrigin, position };
   }
 }
 
@@ -123,6 +127,8 @@ export function StationFinder() {
   const [fuel, setFuel] = useState<FuelType>(DEFAULT_FUEL);
   const [origin, setOrigin] = useState<SearchOrigin>(CURRENT_POSITION);
   const [state, setState] = useState<SearchState>({ kind: "loading" });
+  // The position the latest finished search was centered on.
+  const [searchedAt, setSearchedAt] = useState<PickedPosition | null>(null);
   // Ignores responses from searches that a newer search has replaced.
   const latestSearch = useRef(0);
 
@@ -131,6 +137,7 @@ export function StationFinder() {
     return findStations(fuelType, from).then((result) => {
       if (searchId !== latestSearch.current) return;
       setOrigin(result.origin);
+      setSearchedAt(result.position);
       setState(result.state);
     });
   }, []);
@@ -173,9 +180,23 @@ export function StationFinder() {
         <h1 className="font-heading text-2xl font-semibold tracking-tight">
           근처 최저가 주유소
         </h1>
-        <p className="text-sm text-muted-foreground">
-          {ORIGIN_LABELS[origin.kind]} 반경 2km · 가격 낮은 순
-        </p>
+        <div className="flex flex-wrap items-center gap-x-3">
+          <p className="text-sm text-muted-foreground">
+            {ORIGIN_LABELS[origin.kind]} 반경 2km · 가격 낮은 순
+          </p>
+          {state.kind === "done" && searchedAt && (
+            <a
+              href={kakaoMapLink(ORIGIN_LABELS[origin.kind], searchedAt.lat, searchedAt.lng)}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${ORIGIN_LABELS[origin.kind]} 지도에서 보기 (새 탭)`}
+              className={buttonVariants({ variant: "link", size: "sm", className: "px-0" })}
+            >
+              <MapPinIcon data-icon="inline-start" />
+              지도에서 보기
+            </a>
+          )}
+        </div>
         {origin.kind === "default" && (
           <p className="flex items-center gap-2 text-sm">
             <MapPinOffIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
