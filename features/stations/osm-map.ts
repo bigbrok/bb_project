@@ -32,7 +32,9 @@ export async function openOsmMap(
 ): Promise<{ L: typeof import("leaflet"); map: LeafletMap } | null> {
   const L = await loadLeaflet();
   if (signal.aborted) return null;
-  const map = L.map(container, { scrollWheelZoom: false }).setView(center, zoom);
+  // No inertia: the map stops where the user lets go, so the center pin can
+  // be placed precisely. No wheel zoom, so the page scrolls over the map.
+  const map = L.map(container, { scrollWheelZoom: false, inertia: false }).setView(center, zoom);
   L.tileLayer(OSM_TILE_URL, { attribution: OSM_ATTRIBUTION, maxZoom: 19 }).addTo(map);
   return { L, map };
 }

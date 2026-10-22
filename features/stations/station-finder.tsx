@@ -34,7 +34,7 @@ import { PlaceSearchForm } from "@/features/places/place-search-form";
 import { formatDistance, formatPrice } from "./format";
 import { LocationPicker, type PickedPosition } from "./location-picker";
 import { kakaoMapLink, kakaoMapUrl } from "./map-link";
-import { SearchMap } from "./search-map";
+import { SearchMap, type MapCenter } from "./search-map";
 import {
   DEFAULT_FUEL,
   DEFAULT_PLACE,
@@ -77,6 +77,11 @@ function originLabel(origin: SearchOrigin) {
     case "place":
       return origin.name;
   }
+}
+
+// Map centers come back as floats; treat sub-meter differences as the same spot.
+function samePosition(a: PickedPosition, b: PickedPosition) {
+  return Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lng - b.lng) < 1e-5;
 }
 
 function getPosition() {
@@ -140,6 +145,8 @@ export function StationFinder() {
   const [state, setState] = useState<SearchState>({ kind: "loading" });
   // The position the latest finished search was centered on.
   const [searchedAt, setSearchedAt] = useState<PickedPosition | null>(null);
+  // Where the map's center pin points after the user drags the map.
+  const [mapCenter, setMapCenter] = useState<MapCenter | null>(null);
   // Ignores responses from searches that a newer search has replaced.
   const latestSearch = useRef(0);
 
@@ -184,6 +191,12 @@ export function StationFinder() {
   }
 
   const usingFallback = origin.kind !== "current";
+  const pinMoved = mapCenter !== null && searchedAt !== null && !samePosition(mapCenter, searchedAt);
+
+  function handleSearchAgain() {
+    if (pinMoved && mapCenter) searchFrom({ kind: "picked", ...mapCenter });
+    else search(fuel, origin);
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -251,12 +264,13 @@ export function StationFinder() {
         )}
       </header>
 
-      {state.kind === "done" && searchedAt && (
-        <SearchMap
-          key={`${searchedAt.lat},${searchedAt.lng}`}
-          lat={searchedAt.lat}
-          lng={searchedAt.lng}
-        />
+      {state.kind !== "picking" && searchedAt && (
+        <div className="flex flex-col gap-2">
+          <SearchMap lat={searchedAt.lat} lng={searchedAt.lng} onCenterChange={setMapCenter} />
+          {pinMoved && (
+            <p className="text-sm text-muted-foreground">다시 검색을 누르면 핀 위치로 검색합니다.</p>
+          )}
+        </div>
       )}
 
       <div className="flex items-center justify-between gap-3">
@@ -274,7 +288,7 @@ export function StationFinder() {
         </ToggleGroup>
         <Button
           variant="outline"
-          onClick={() => search(fuel, origin)}
+          onClick={handleSearchAgain}
           disabled={state.kind === "loading"}
         >
           <RefreshCwIcon data-icon="inline-start" />

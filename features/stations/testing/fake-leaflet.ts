@@ -36,6 +36,15 @@ export function clickMap(lat: number, lng: number) {
   leafletState.maps.at(-1)?.handlers.click?.({ latlng: { lat, lng } });
 }
 
+/** Simulates the user dragging the most recently opened map to a new center. */
+export function panMap(lat: number, lng: number) {
+  const target = leafletState.maps.at(-1);
+  if (!target) return;
+  target.view = [lat, lng];
+  target.handlers.move?.({});
+  target.handlers.moveend?.({});
+}
+
 function addable<T extends object>(item: T) {
   return Object.assign(item, { addTo: () => item });
 }
@@ -51,7 +60,8 @@ export function map(container: HTMLElement, options: Record<string, unknown>) {
   if (liveContainers.has(container)) throw new Error("Map container is already initialized.");
   liveContainers.add(container);
   const created: FakeMap & {
-    setView(at: LatLng, zoom: number): typeof created;
+    setView(at: LatLngInput, zoom: number): typeof created;
+    getCenter(): { lat: number; lng: number };
     on(type: string, handler: (event: unknown) => void): typeof created;
     remove(): void;
   } = {
@@ -59,9 +69,13 @@ export function map(container: HTMLElement, options: Record<string, unknown>) {
     removed: false,
     handlers: {},
     setView(at, zoom) {
-      created.view = at;
+      created.view = toPair(at);
       created.zoom = zoom;
       return created;
+    },
+    getCenter() {
+      const [lat, lng] = created.view ?? [0, 0];
+      return { lat, lng };
     },
     on(type, handler) {
       created.handlers[type] = handler;
@@ -94,7 +108,13 @@ export function circleMarker(at: LatLngInput) {
 }
 
 export function circle(at: LatLngInput, options: { radius: number }) {
-  const created = addable({ at: toPair(at), radius: options.radius });
+  const created = addable({
+    at: toPair(at),
+    radius: options.radius,
+    setLatLng(next: LatLngInput) {
+      created.at = toPair(next);
+    },
+  });
   leafletState.circles.push(created);
   return created;
 }
