@@ -32,7 +32,13 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { formatDistance, formatPrice } from "./format";
 import { LocationPicker, type PickedPosition } from "./location-picker";
 import { kakaoMapUrl } from "./map-link";
-import { DEFAULT_FUEL, isFuelType, type FuelType, type Station } from "./types";
+import {
+  DEFAULT_FUEL,
+  DEFAULT_PLACE,
+  isFuelType,
+  type FuelType,
+  type Station,
+} from "./types";
 
 const FUEL_LABELS: Record<FuelType, string> = {
   gasoline: "휘발유",
@@ -41,15 +47,26 @@ const FUEL_LABELS: Record<FuelType, string> = {
 
 type SearchState =
   | { kind: "loading" }
-  | { kind: "location-error" }
   | { kind: "picking" }
   | { kind: "price-error" }
   | { kind: "done"; stations: Station[] };
 
-/** Where a search is centered: the device's position or one picked on the map. */
-type SearchOrigin = { kind: "current" } | ({ kind: "picked" } & PickedPosition);
+/**
+ * Where a search is centered: the device's position, the default place used
+ * when that position is unavailable, or a position the user chose.
+ */
+type SearchOrigin =
+  | { kind: "current" }
+  | { kind: "default" }
+  | ({ kind: "picked" } & PickedPosition);
 
 const CURRENT_POSITION: SearchOrigin = { kind: "current" };
+
+const ORIGIN_LABELS: Record<SearchOrigin["kind"], string> = {
+  current: "현재 위치",
+  default: DEFAULT_PLACE.name,
+  picked: "고른 위치",
+};
 
 function getPosition() {
   return new Promise<GeolocationPosition>((resolve, reject) => {
@@ -65,19 +82,24 @@ function getPosition() {
   });
 }
 
+/**
+ * Searches around the origin. When the device's position is unavailable the
+ * search falls back to the default place, and the returned origin says so.
+ */
 async function findStations(
   fuel: FuelType,
   origin: SearchOrigin
-): Promise<SearchState> {
-  let position: PickedPosition;
+): Promise<{ state: SearchState; origin: SearchOrigin }> {
+  let position: PickedPosition = DEFAULT_PLACE;
+  let usedOrigin = origin;
   if (origin.kind === "picked") {
     position = origin;
-  } else {
+  } else if (origin.kind === "current") {
     try {
       const { coords } = await getPosition();
       position = { lat: coords.latitude, lng: coords.longitude };
     } catch {
-      return { kind: "location-error" };
+      usedOrigin = { kind: "default" };
     }
   }
 
@@ -91,9 +113,9 @@ async function findStations(
     const res = await fetch(`/api/stations?${params}`);
     if (!res.ok) throw new Error(`Search failed: ${res.status}`);
     const body = (await res.json()) as { stations: Station[] };
-    return { kind: "done", stations: body.stations };
+    return { state: { kind: "done", stations: body.stations }, origin: usedOrigin };
   } catch {
-    return { kind: "price-error" };
+    return { state: { kind: "price-error" }, origin: usedOrigin };
   }
 }
 
@@ -107,7 +129,9 @@ export function StationFinder() {
   const runSearch = useCallback((fuelType: FuelType, from: SearchOrigin) => {
     const searchId = ++latestSearch.current;
     return findStations(fuelType, from).then((result) => {
-      if (searchId === latestSearch.current) setState(result);
+      if (searchId !== latestSearch.current) return;
+      setOrigin(result.origin);
+      setState(result.state);
     });
   }, []);
 
@@ -141,7 +165,7 @@ export function StationFinder() {
     setState({ kind: "picking" });
   }
 
-  const usingPicked = origin.kind === "picked";
+  const usingFallback = origin.kind !== "current";
 
   return (
     <div className="flex flex-col gap-6">
@@ -149,16 +173,32 @@ export function StationFinder() {
         <h1 className="font-heading text-2xl font-semibold tracking-tight">
           근처 최저가 주유소
         </h1>
-        <div className="flex flex-wrap items-center gap-x-2">
-          <p className="text-sm text-muted-foreground">
-            {usingPicked ? "고른 위치" : "현재 위치"} 반경 2km · 가격 낮은 순
+        <p className="text-sm text-muted-foreground">
+          {ORIGIN_LABELS[origin.kind]} 반경 2km · 가격 낮은 순
+        </p>
+        {origin.kind === "default" && (
+          <p className="flex items-center gap-2 text-sm">
+            <MapPinOffIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            현재 위치를 알 수 없어 {DEFAULT_PLACE.name} 기준으로 보여 줍니다.
           </p>
-          {usingPicked && state.kind !== "picking" && (
-            <Button variant="link" size="sm" className="px-0" onClick={startPicking}>
-              위치 다시 고르기
+        )}
+        {usingFallback && (
+          <div className="flex flex-wrap gap-x-4">
+            {state.kind !== "picking" && (
+              <Button variant="link" size="sm" className="px-0" onClick={startPicking}>
+                위치 바꾸기
+              </Button>
+            )}
+            <Button
+              variant="link"
+              size="sm"
+              className="px-0"
+              onClick={() => searchFrom(CURRENT_POSITION)}
+            >
+              현재 위치로 다시 시도
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </header>
 
       <div className="flex items-center justify-between gap-3">
@@ -188,7 +228,6 @@ export function StationFinder() {
         state={state}
         fuel={fuel}
         onRetry={() => search(fuel, origin)}
-        onRetryCurrentPosition={() => searchFrom(CURRENT_POSITION)}
         onPick={(position) => searchFrom({ kind: "picked", ...position })}
       />
     </div>
@@ -237,13 +276,11 @@ function SearchResult({
   state,
   fuel,
   onRetry,
-  onRetryCurrentPosition,
   onPick,
 }: {
   state: SearchState;
   fuel: FuelType;
   onRetry: () => void;
-  onRetryCurrentPosition: () => void;
   onPick: (position: PickedPosition) => void;
 }) {
   switch (state.kind) {
@@ -254,26 +291,6 @@ function SearchResult({
           {Array.from({ length: 4 }, (_, i) => (
             <Skeleton key={i} className="h-16 w-full" />
           ))}
-        </div>
-      );
-    case "location-error":
-      return (
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <p className="flex items-center gap-2 font-medium">
-              <MapPinOffIcon className="size-4 text-muted-foreground" aria-hidden />
-              현재 위치를 알 수 없습니다
-            </p>
-            <Button
-              variant="link"
-              size="sm"
-              className="w-fit px-0"
-              onClick={onRetryCurrentPosition}
-            >
-              현재 위치로 다시 시도
-            </Button>
-          </div>
-          <LocationPicker onSearch={onPick} />
         </div>
       );
     case "picking":

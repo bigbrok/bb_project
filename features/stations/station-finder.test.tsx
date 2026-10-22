@@ -155,24 +155,68 @@ test("근처에 주유소가 없으면 없다고 표시한다", async () => {
   expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
 });
 
-test("위치를 얻지 못하면 위치가 필요하다고 안내하고 다시 시도할 수 있다", async () => {
+test("위치를 얻지 못하면 마곡나루역 기준으로 바로 검색하고 그 사실을 알린다", async () => {
   getCurrentPosition.mockImplementationOnce(
     (_success: PositionCallback, error: PositionErrorCallback) =>
       error({ code: 1, message: "denied" } as GeolocationPositionError)
   );
+  fetchMock.mockResolvedValue(
+    stationsResponse([{ id: "A", name: "마곡주유소", price: 1650, distance: 400 }])
+  );
 
   render(<StationFinder />);
 
-  expect(await screen.findByText("현재 위치를 알 수 없습니다")).toBeInTheDocument();
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(await screen.findByText("마곡주유소")).toBeInTheDocument();
+  const url = new URL(fetchMock.mock.calls[0][0], "http://localhost");
+  expect([url.searchParams.get("lat"), url.searchParams.get("lng")]).toEqual(["37.5668", "126.827"]);
+  expect(screen.getByText(/마곡나루역 반경 2km/)).toBeInTheDocument();
+  expect(
+    screen.getByText("현재 위치를 알 수 없어 마곡나루역 기준으로 보여 줍니다.")
+  ).toBeInTheDocument();
+});
+
+test("마곡나루역 기준일 때 기름 종류를 바꾸면 위치를 다시 묻지 않고 마곡나루역으로 검색한다", async () => {
+  getCurrentPosition.mockImplementationOnce(
+    (_success: PositionCallback, error: PositionErrorCallback) =>
+      error({ code: 1, message: "denied" } as GeolocationPositionError)
+  );
+  fetchMock.mockImplementation(async () =>
+    stationsResponse([{ id: "A", name: "마곡주유소", price: 1650, distance: 400 }])
+  );
+
+  render(<StationFinder />);
+  await screen.findByText("마곡주유소");
+  fireEvent.click(screen.getByRole("button", { name: "경유" }));
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  const url = new URL(fetchMock.mock.calls[1][0], "http://localhost");
+  expect([url.searchParams.get("lat"), url.searchParams.get("fuel")]).toEqual(["37.5668", "diesel"]);
+  expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+});
+
+test("마곡나루역 기준일 때 현재 위치로 다시 시도하면 위치를 새로 얻어 검색한다", async () => {
+  getCurrentPosition.mockImplementationOnce(
+    (_success: PositionCallback, error: PositionErrorCallback) =>
+      error({ code: 1, message: "denied" } as GeolocationPositionError)
+  );
+  fetchMock.mockResolvedValueOnce(
+    stationsResponse([{ id: "A", name: "마곡주유소", price: 1650, distance: 400 }])
+  );
+
+  render(<StationFinder />);
+  await screen.findByText("마곡주유소");
 
   allowLocation();
-  fetchMock.mockResolvedValue(
-    stationsResponse([{ id: "A", name: "주유소", price: 1500, distance: 100 }])
+  fetchMock.mockResolvedValueOnce(
+    stationsResponse([{ id: "B", name: "강남주유소", price: 1800, distance: 100 }])
   );
   fireEvent.click(screen.getByRole("button", { name: "현재 위치로 다시 시도" }));
 
-  expect(await screen.findByText("주유소")).toBeInTheDocument();
+  expect(await screen.findByText("강남주유소")).toBeInTheDocument();
+  const url = new URL(fetchMock.mock.calls[1][0], "http://localhost");
+  expect(url.searchParams.get("lat")).toBe("37.4979");
+  expect(screen.getByText(/현재 위치 반경 2km/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "위치 바꾸기" })).not.toBeInTheDocument();
 });
 
 test("가격 정보를 가져오지 못하면 빈 상태와 다른 오류를 보여주고 다시 시도할 수 있다", async () => {

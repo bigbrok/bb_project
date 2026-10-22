@@ -6,6 +6,9 @@ export const DEFAULT_FUEL: FuelType = "gasoline";
 
 export const SEARCH_RADIUS_METERS = 2000;
 
+/** Where searches center when the device's position is unavailable (approximate). */
+export const DEFAULT_PLACE = { name: "마곡나루역", lat: 37.5668, lng: 126.827 };
+
 export type Station = {
   id: string;
   name: string;

@@ -26,11 +26,10 @@ import {
   type KakaoMaps,
   type KakaoMarker,
 } from "./kakao-maps";
+import { DEFAULT_PLACE } from "./types";
 
 export type PickedPosition = { lat: number; lng: number };
 
-// Seoul City Hall: a recognizable starting point when the user's position is unknown.
-const INITIAL_CENTER = { lat: 37.5665, lng: 126.978 };
 
 type MapHandle = {
   maps: KakaoMaps;
@@ -59,7 +58,7 @@ export function LocationPicker({
       .then((maps) => {
         if (cancelled || !containerRef.current) return;
         const map = new maps.Map(containerRef.current, {
-          center: new maps.LatLng(INITIAL_CENTER.lat, INITIAL_CENTER.lng),
+          center: new maps.LatLng(DEFAULT_PLACE.lat, DEFAULT_PLACE.lng),
           level: 5,
         });
         const pick: MapHandle["pick"] = (position, options) => {
