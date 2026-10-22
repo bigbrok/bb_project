@@ -3,68 +3,18 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { StationFinder } from "@/features/stations/station-finder";
 
-let fetchMock: ReturnType<typeof vi.fn>;
-let getCurrentPosition: ReturnType<typeof vi.fn>;
+import { clickMap as clickLeafletMap, leafletState, resetLeaflet } from "./testing/fake-leaflet";
 
-// Minimal stand-in for the Kakao Maps SDK, the external boundary of the picker.
-class FakeLatLng {
-  constructor(
-    private lat: number,
-    private lng: number
-  ) {}
-  getLat() {
-    return this.lat;
-  }
-  getLng() {
-    return this.lng;
-  }
-}
-
-let mapClick: ((event: { latLng: FakeLatLng }) => void) | undefined;
-let markers: { position: FakeLatLng; map: unknown }[];
-let initialCenter: FakeLatLng | undefined;
-
-function installFakeKakao() {
-  mapClick = undefined;
-  markers = [];
-  vi.stubGlobal("kakao", {
-    maps: {
-      load: (callback: () => void) => callback(),
-      LatLng: FakeLatLng,
-      Map: class {
-        constructor(
-          public container: HTMLElement,
-          options: { center: FakeLatLng }
-        ) {
-          initialCenter = options.center;
-        }
-      },
-      Marker: class {
-        position: FakeLatLng;
-        map: unknown = null;
-        constructor(options: { position: FakeLatLng }) {
-          this.position = options.position;
-          markers.push(this);
-        }
-        setPosition(position: FakeLatLng) {
-          this.position = position;
-        }
-        setMap(map: unknown) {
-          this.map = map;
-        }
-      },
-      event: {
-        addListener: (_target: unknown, type: string, handler: typeof mapClick) => {
-          if (type === "click") mapClick = handler;
-        },
-      },
-    },
-  });
-}
+vi.mock("leaflet", () => import("./testing/fake-leaflet"));
 
 function clickMap(lat: number, lng: number) {
-  act(() => mapClick?.({ latLng: new FakeLatLng(lat, lng) }));
+  act(() => clickLeafletMap(lat, lng));
 }
+
+const markers = leafletState.markers;
+
+let fetchMock: ReturnType<typeof vi.fn>;
+let getCurrentPosition: ReturnType<typeof vi.fn>;
 
 function stationsResponse(stations: unknown[]) {
   return new Response(JSON.stringify({ stations }), {
@@ -87,8 +37,7 @@ beforeEach(() => {
     ...navigator,
     geolocation: { getCurrentPosition },
   });
-  vi.stubEnv("NEXT_PUBLIC_KAKAO_MAP_KEY", "test-js-key");
-  installFakeKakao();
+  resetLeaflet();
 });
 
 afterEach(() => {
@@ -104,7 +53,10 @@ async function openPicker() {
   fetchMock.mockResolvedValueOnce(stationsResponse([]));
   render(<StationFinder />);
   fireEvent.click(await screen.findByRole("button", { name: "위치 바꾸기" }));
-  await screen.findByRole("region", { name: "위치 고르기 지도" });
+  const picker = await screen.findByRole("region", { name: "위치 고르기 지도" });
+  await waitFor(() => expect(picker).toHaveAttribute("aria-busy", "false"));
+  // Count only the markers the picker draws, not the search map's.
+  markers.length = 0;
 }
 
 function searchedPosition(call: number) {
@@ -122,7 +74,7 @@ test("위치 바꾸기를 누르면 지도가 열리고, 지도에서 고르기 
 test("위치 고르기 지도는 마곡나루역에서 시작한다", async () => {
   await openPicker();
 
-  expect([initialCenter?.getLat(), initialCenter?.getLng()]).toEqual([37.5668, 126.827]);
+  expect(leafletState.maps.at(-1)?.view).toEqual([37.5668, 126.827]);
 });
 
 test("지도에서 누른 곳에 마커를 놓고, 이 위치로 검색하면 그 지점 기준 목록을 보여 준다", async () => {
@@ -133,7 +85,7 @@ test("지도에서 누른 곳에 마커를 놓고, 이 위치로 검색하면 �
   clickMap(37.5, 127.01);
 
   expect(markers).toHaveLength(1);
-  expect(markers[0].position.getLat()).toBe(37.5);
+  expect(markers[0].at).toEqual([37.5, 127.01]);
   fireEvent.click(screen.getByRole("button", { name: "이 위치로 검색" }));
 
   expect(await screen.findByText("고른곳주유소")).toBeInTheDocument();
@@ -178,7 +130,6 @@ test("고른 위치로 검색 중에도 위치 바꾸기로 다른 지점을 고
 });
 
 test("지도를 불러오지 못하면 안내를 보여 주고, 현재 위치로 다시 시도하는 길은 남는다", async () => {
-  vi.stubEnv("NEXT_PUBLIC_KAKAO_MAP_KEY", "");
   await openPickerExpectingFailure();
 
   expect(await screen.findByText("지도를 불러오지 못했습니다")).toBeInTheDocument();
@@ -187,9 +138,17 @@ test("지도를 불러오지 못하면 안내를 보여 주고, 현재 위치로
 
 async function openPickerExpectingFailure() {
   denyLocation();
+  // The default place's map opens first; the picker's map is the one that fails.
+  await renderAndFailPickerMap();
+}
+
+async function renderAndFailPickerMap() {
   fetchMock.mockResolvedValueOnce(stationsResponse([]));
   render(<StationFinder />);
-  fireEvent.click(await screen.findByRole("button", { name: "위치 바꾸기" }));
+  const changeLocation = await screen.findByRole("button", { name: "위치 바꾸기" });
+  await waitFor(() => expect(leafletState.maps.length).toBeGreaterThan(0));
+  leafletState.failNext = true;
+  fireEvent.click(changeLocation);
 }
 
 test("위치 바꾸기 화면에는 조회 입력창이 따로 없고, 제목 아래 입력창으로 조회하면 그 장소 목록으로 바뀐다", async () => {
@@ -211,4 +170,15 @@ test("위치 바꾸기 화면에는 조회 입력창이 따로 없고, 제목 �
   expect(await screen.findByText("고른곳주유소")).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "위치 고르기 지도" })).not.toBeInTheDocument();
   expect(screen.getByText(/서울역 반경 2km/)).toBeInTheDocument();
+});
+
+test("개발 모드처럼 effect가 두 번 실행돼도 위치 고르기 지도가 열린다", async () => {
+  denyLocation();
+  fetchMock.mockResolvedValueOnce(stationsResponse([]));
+  render(<StationFinder />, { reactStrictMode: true });
+  fireEvent.click(await screen.findByRole("button", { name: "위치 바꾸기" }));
+
+  const picker = await screen.findByRole("region", { name: "위치 고르기 지도" });
+  await waitFor(() => expect(picker).toHaveAttribute("aria-busy", "false"));
+  expect(screen.queryByText("지도를 불러오지 못했습니다")).not.toBeInTheDocument();
 });

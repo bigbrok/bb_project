@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { CircleMarker } from "leaflet";
 import { MapIcon, SearchIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -12,10 +13,12 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 
-import { loadKakaoMaps, type KakaoMarker } from "./kakao-maps";
+import { openOsmMap } from "./osm-map";
 import { DEFAULT_PLACE } from "./types";
 
 export type PickedPosition = { lat: number; lng: number };
+
+const ZOOM = 14;
 
 export function LocationPicker({
   onSearch,
@@ -27,34 +30,31 @@ export function LocationPicker({
   const [picked, setPicked] = useState<PickedPosition | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    let marker: KakaoMarker | null = null;
+    const container = containerRef.current;
+    if (!container) return;
+    const controller = new AbortController();
+    let remove: (() => void) | undefined;
 
-    loadKakaoMaps()
-      .then((maps) => {
-        if (cancelled || !containerRef.current) return;
-        const map = new maps.Map(containerRef.current, {
-          center: new maps.LatLng(DEFAULT_PLACE.lat, DEFAULT_PLACE.lng),
-          level: 5,
+    openOsmMap(container, [DEFAULT_PLACE.lat, DEFAULT_PLACE.lng], ZOOM, controller.signal)
+      .then((opened) => {
+        if (!opened) return;
+        const { L, map } = opened;
+        let marker: CircleMarker | null = null;
+        map.on("click", ({ latlng }) => {
+          if (marker) marker.setLatLng(latlng);
+          else marker = L.circleMarker(latlng, { radius: 8, className: "search-map-marker" }).addTo(map);
+          setPicked({ lat: latlng.lat, lng: latlng.lng });
         });
-        maps.event.addListener(map, "click", ({ latLng }) => {
-          if (marker) {
-            marker.setPosition(latLng);
-          } else {
-            marker = new maps.Marker({ position: latLng });
-            marker.setMap(map);
-          }
-          setPicked({ lat: latLng.getLat(), lng: latLng.getLng() });
-        });
+        remove = () => map.remove();
         setStatus("ready");
       })
       .catch(() => {
-        if (!cancelled) setStatus("error");
+        if (!controller.signal.aborted) setStatus("error");
       });
 
     return () => {
-      cancelled = true;
-      marker?.setMap(null);
+      controller.abort();
+      remove?.();
     };
   }, []);
 
@@ -86,7 +86,7 @@ export function LocationPicker({
         role="region"
         aria-label="위치 고르기 지도"
         aria-busy={status === "loading"}
-        className="h-80 w-full overflow-hidden rounded-lg border bg-muted"
+        className="isolate h-80 w-full overflow-hidden rounded-lg border bg-muted"
       />
       <Button disabled={!picked} onClick={() => picked && onSearch(picked)}>
         <SearchIcon data-icon="inline-start" />
