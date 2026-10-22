@@ -32,14 +32,14 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { PlaceSearchForm } from "@/features/places/place-search-form";
 
 import { formatDistance, formatPrice } from "./format";
-import { LocationPicker, type PickedPosition } from "./location-picker";
 import { kakaoMapLink, kakaoMapUrl } from "./map-link";
-import { SearchMap, type MapCenter } from "./search-map";
+import { SearchMap } from "./search-map";
 import {
   DEFAULT_FUEL,
   DEFAULT_PLACE,
   isFuelType,
   type FuelType,
+  type Position,
   type Station,
 } from "./types";
 
@@ -50,7 +50,6 @@ const FUEL_LABELS: Record<FuelType, string> = {
 
 type SearchState =
   | { kind: "loading" }
-  | { kind: "picking" }
   | { kind: "price-error" }
   | { kind: "done"; stations: Station[] };
 
@@ -61,8 +60,8 @@ type SearchState =
 type SearchOrigin =
   | { kind: "current" }
   | { kind: "default" }
-  | ({ kind: "picked" } & PickedPosition)
-  | ({ kind: "place"; name: string } & PickedPosition);
+  | ({ kind: "picked" } & Position)
+  | ({ kind: "place"; name: string } & Position);
 
 const CURRENT_POSITION: SearchOrigin = { kind: "current" };
 
@@ -80,7 +79,7 @@ function originLabel(origin: SearchOrigin) {
 }
 
 // Map centers come back as floats; treat sub-meter differences as the same spot.
-function samePosition(a: PickedPosition, b: PickedPosition) {
+function samePosition(a: Position, b: Position) {
   return Math.abs(a.lat - b.lat) < 1e-5 && Math.abs(a.lng - b.lng) < 1e-5;
 }
 
@@ -105,8 +104,8 @@ function getPosition() {
 async function findStations(
   fuel: FuelType,
   origin: SearchOrigin
-): Promise<{ state: SearchState; origin: SearchOrigin; position: PickedPosition }> {
-  let position: PickedPosition = DEFAULT_PLACE;
+): Promise<{ state: SearchState; origin: SearchOrigin; position: Position }> {
+  let position: Position = DEFAULT_PLACE;
   let usedOrigin = origin;
   if (origin.kind === "picked" || origin.kind === "place") {
     position = { lat: origin.lat, lng: origin.lng };
@@ -144,9 +143,9 @@ export function StationFinder() {
   const [origin, setOrigin] = useState<SearchOrigin>(CURRENT_POSITION);
   const [state, setState] = useState<SearchState>({ kind: "loading" });
   // The position the latest finished search was centered on.
-  const [searchedAt, setSearchedAt] = useState<PickedPosition | null>(null);
+  const [searchedAt, setSearchedAt] = useState<Position | null>(null);
   // Where the map's center pin points after the user drags the map.
-  const [mapCenter, setMapCenter] = useState<MapCenter | null>(null);
+  const [mapCenter, setMapCenter] = useState<Position | null>(null);
   // Ignores responses from searches that a newer search has replaced.
   const latestSearch = useRef(0);
 
@@ -182,12 +181,6 @@ export function StationFinder() {
   function searchFrom(from: SearchOrigin) {
     setOrigin(from);
     search(fuel, from);
-  }
-
-  function startPicking() {
-    // Drops any in-flight search so its result cannot replace the map.
-    latestSearch.current++;
-    setState({ kind: "picking" });
   }
 
   const usingFallback = origin.kind !== "current";
@@ -247,11 +240,6 @@ export function StationFinder() {
         )}
         {usingFallback && (
           <div className="flex flex-wrap gap-x-4">
-            {state.kind !== "picking" && (
-              <Button variant="link" size="sm" className="px-0" onClick={startPicking}>
-                위치 바꾸기
-              </Button>
-            )}
             <Button
               variant="link"
               size="sm"
@@ -264,7 +252,7 @@ export function StationFinder() {
         )}
       </header>
 
-      {state.kind !== "picking" && searchedAt && (
+      {searchedAt && (
         <div className="flex flex-col gap-2">
           <SearchMap lat={searchedAt.lat} lng={searchedAt.lng} onCenterChange={setMapCenter} />
           {pinMoved && (
@@ -300,7 +288,6 @@ export function StationFinder() {
         state={state}
         fuel={fuel}
         onRetry={() => search(fuel, origin)}
-        onPick={(position) => searchFrom({ kind: "picked", ...position })}
       />
     </div>
   );
@@ -348,12 +335,10 @@ function SearchResult({
   state,
   fuel,
   onRetry,
-  onPick,
 }: {
   state: SearchState;
   fuel: FuelType;
   onRetry: () => void;
-  onPick: (position: PickedPosition) => void;
 }) {
   switch (state.kind) {
     case "loading":
@@ -365,8 +350,6 @@ function SearchResult({
           ))}
         </div>
       );
-    case "picking":
-      return <LocationPicker onSearch={onPick} />;
     case "price-error":
       return (
         <Alert variant="destructive">

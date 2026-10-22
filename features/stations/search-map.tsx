@@ -5,12 +5,10 @@ import type { Circle, Map as LeafletMap } from "leaflet";
 import { MapPinIcon } from "lucide-react";
 
 import { openOsmMap } from "./osm-map";
-import { SEARCH_RADIUS_METERS } from "./types";
+import { SEARCH_RADIUS_METERS, type Position } from "./types";
 
 // Zoom 13 fits the 2km circle inside the map's height at Korean latitudes.
 const ZOOM = 13;
-
-export type MapCenter = { lat: number; lng: number };
 
 /**
  * An OpenStreetMap map with a pin fixed at its center and the 2km search
@@ -24,7 +22,7 @@ export function SearchMap({
 }: {
   lat: number;
   lng: number;
-  onCenterChange: (center: MapCenter) => void;
+  onCenterChange: (center: Position) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const layersRef = useRef<{ map: LeafletMap; circle: Circle } | null>(null);

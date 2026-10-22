@@ -31,11 +31,6 @@ export function resetLeaflet() {
   leafletState.failNext = false;
 }
 
-/** Simulates a click on the most recently opened map. */
-export function clickMap(lat: number, lng: number) {
-  leafletState.maps.at(-1)?.handlers.click?.({ latlng: { lat, lng } });
-}
-
 /** Simulates the user dragging the most recently opened map to a new center. */
 export function panMap(lat: number, lng: number) {
   const target = leafletState.maps.at(-1);

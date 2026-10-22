@@ -6,6 +6,9 @@ export const DEFAULT_FUEL: FuelType = "gasoline";
 
 export const SEARCH_RADIUS_METERS = 2000;
 
+/** A WGS84 position. */
+export type Position = { lat: number; lng: number };
+
 /** Where searches center when the device's position is unavailable (approximate). */
 export const DEFAULT_PLACE = { name: "마곡나루역", lat: 37.5668, lng: 126.827 };
 

@@ -68,15 +68,12 @@ test("장소를 조회해 검색 기준이 바뀌면 지도도 그 위치로 옮
   expect(leafletState.circles.at(-1)!.at).toEqual([37.5547, 126.9707]);
 });
 
-test("위치를 고르는 화면에서는 검색 위치 지도를 보여 주지 않는다", async () => {
+test("위치 바꾸기 버튼은 없고, 위치는 지도 고정 핀으로 옮긴다", async () => {
   render(<StationFinder />);
   await screen.findByRole("region", { name: "검색 위치 지도" });
 
-  fireEvent.click(screen.getByRole("button", { name: "위치 바꾸기" }));
-
-  await waitFor(() =>
-    expect(screen.queryByRole("region", { name: "검색 위치 지도" })).not.toBeInTheDocument()
-  );
+  expect(screen.queryByRole("button", { name: "위치 바꾸기" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "현재 위치로 다시 시도" })).toBeInTheDocument();
 });
 
 function stationsCalls() {

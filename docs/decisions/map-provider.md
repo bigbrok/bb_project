@@ -2,7 +2,7 @@
 
 ## Decisions
 
-- 앱 안의 지도(목록 위 검색 위치 지도, "위치 바꾸기" 지도)는 모두 OpenStreetMap 표준 타일(`https://tile.openstreetmap.org/{z}/{x}/{y}.png`)을 Leaflet으로 띄우고, 저작자 표시를 지도 오른쪽 아래에 항상 둔다. 키가 필요 없다.
+- 앱 안의 지도(목록 위 검색 위치 지도, 정중앙 고정 핀으로 위치를 옮긴다)는 OpenStreetMap 표준 타일(`https://tile.openstreetmap.org/{z}/{x}/{y}.png`)을 Leaflet으로 띄우고, 저작자 표시를 지도 오른쪽 아래에 항상 둔다. 키가 필요 없다.
 - 외부 지도로 위치를 보여 줄 때(주유소, 검색 기준 위치)는 카카오맵 웹 링크(`map.kakao.com/link/map/이름,위도,경도`)를 쓴다. 키가 필요 없다.
 
 ## Boundaries
