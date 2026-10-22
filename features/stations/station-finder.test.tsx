@@ -170,7 +170,7 @@ test("위치를 얻지 못하면 위치가 필요하다고 안내하고 다시 �
   fetchMock.mockResolvedValue(
     stationsResponse([{ id: "A", name: "주유소", price: 1500, distance: 100 }])
   );
-  fireEvent.click(screen.getByRole("button", { name: "다시 시도" }));
+  fireEvent.click(screen.getByRole("button", { name: "현재 위치로 다시 시도" }));
 
   expect(await screen.findByText("주유소")).toBeInTheDocument();
 });

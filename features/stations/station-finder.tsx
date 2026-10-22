@@ -259,18 +259,20 @@ function SearchResult({
     case "location-error":
       return (
         <div className="flex flex-col gap-4">
-          <Alert>
-            <MapPinOffIcon />
-            <AlertTitle>현재 위치를 알 수 없습니다</AlertTitle>
-            <AlertDescription>
-              브라우저에서 위치 권한을 허용한 뒤 다시 시도해 주세요.
-            </AlertDescription>
-            <AlertAction>
-              <Button size="sm" variant="outline" onClick={onRetryCurrentPosition}>
-                다시 시도
-              </Button>
-            </AlertAction>
-          </Alert>
+          <div className="flex flex-col gap-1">
+            <p className="flex items-center gap-2 font-medium">
+              <MapPinOffIcon className="size-4 text-muted-foreground" aria-hidden />
+              현재 위치를 알 수 없습니다
+            </p>
+            <Button
+              variant="link"
+              size="sm"
+              className="w-fit px-0"
+              onClick={onRetryCurrentPosition}
+            >
+              현재 위치로 다시 시도
+            </Button>
+          </div>
           <LocationPicker onSearch={onPick} />
         </div>
       );
