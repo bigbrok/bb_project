@@ -61,6 +61,63 @@ test("열자마자 현재 위치 기준 휘발유 가격순 목록을 이름·�
   expect(screen.getByRole("button", { name: "휘발유" })).toHaveAttribute("aria-pressed", "true");
 });
 
+test("주유소를 누르면 카카오맵 웹에서 그 위치를 새 탭으로 연다", async () => {
+  allowLocation();
+  fetchMock.mockResolvedValue(
+    stationsResponse([
+      {
+        id: "A",
+        name: "SK서광주유소",
+        price: 1890,
+        distance: 771,
+        lat: 37.494342,
+        lng: 127.035092,
+      },
+    ])
+  );
+
+  render(<StationFinder />);
+
+  const link = await screen.findByRole("link", { name: /SK서광주유소/ });
+  expect(link).toHaveAttribute(
+    "href",
+    `https://map.kakao.com/link/map/${encodeURIComponent("SK서광주유소")},37.494342,127.035092`
+  );
+  expect(link).toHaveAttribute("target", "_blank");
+  expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+});
+
+test("이름의 쉼표는 지도 링크에서 빼서 좌표 구분과 겹치지 않게 한다", async () => {
+  allowLocation();
+  fetchMock.mockResolvedValue(
+    stationsResponse([
+      { id: "A", name: "가,나주유소", price: 1890, distance: 771, lat: 37.5, lng: 127 },
+    ])
+  );
+
+  render(<StationFinder />);
+
+  const link = await screen.findByRole("link", { name: /가,나주유소/ });
+  expect(link).toHaveAttribute(
+    "href",
+    `https://map.kakao.com/link/map/${encodeURIComponent("가 나주유소")},37.5,127`
+  );
+});
+
+test("위치가 없는 주유소는 목록에 보이되 지도 링크가 없다", async () => {
+  allowLocation();
+  fetchMock.mockResolvedValue(
+    stationsResponse([
+      { id: "A", name: "좌표없음", price: 1700, distance: 500, lat: null, lng: null },
+    ])
+  );
+
+  render(<StationFinder />);
+
+  expect(await screen.findByText("좌표없음")).toBeInTheDocument();
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+});
+
 test("경유로 바꾸면 경유 기준으로 다시 검색한다", async () => {
   allowLocation();
   fetchMock.mockImplementation(async () =>

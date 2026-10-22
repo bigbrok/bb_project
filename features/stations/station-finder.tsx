@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FuelIcon, MapPinOffIcon, RefreshCwIcon, TriangleAlertIcon } from "lucide-react";
+import {
+  FuelIcon,
+  MapPinIcon,
+  MapPinOffIcon,
+  RefreshCwIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
 
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -24,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { formatDistance, formatPrice } from "./format";
+import { kakaoMapUrl } from "./map-link";
 import { DEFAULT_FUEL, isFuelType, type FuelType, type Station } from "./types";
 
 const FUEL_LABELS: Record<FuelType, string> = {
@@ -146,6 +153,44 @@ export function StationFinder() {
   );
 }
 
+function StationItem({ station }: { station: Station }) {
+  const mapUrl = kakaoMapUrl(station);
+  const content = (
+    <>
+      <ItemContent className="min-w-0">
+        <ItemTitle className="break-all">{station.name}</ItemTitle>
+        <ItemDescription>{formatDistance(station.distance)}</ItemDescription>
+      </ItemContent>
+      <ItemActions>
+        <span className="text-lg font-semibold tabular-nums">
+          {formatPrice(station.price)}
+        </span>
+        {mapUrl && <MapPinIcon className="text-muted-foreground" aria-hidden />}
+      </ItemActions>
+    </>
+  );
+
+  if (!mapUrl) {
+    return (
+      <Item variant="outline" role="listitem">
+        {content}
+      </Item>
+    );
+  }
+
+  return (
+    <div role="listitem">
+      <Item
+        variant="outline"
+        render={<a href={mapUrl} target="_blank" rel="noopener noreferrer" />}
+      >
+        {content}
+        <span className="sr-only">카카오맵에서 위치 보기 (새 탭)</span>
+      </Item>
+    </div>
+  );
+}
+
 function SearchResult({
   state,
   fuel,
@@ -212,17 +257,7 @@ function SearchResult({
       return (
         <ItemGroup aria-label={`${FUEL_LABELS[fuel]} 가격 낮은 순 주유소`}>
           {state.stations.map((station) => (
-            <Item key={station.id} variant="outline" role="listitem">
-              <ItemContent className="min-w-0">
-                <ItemTitle className="break-all">{station.name}</ItemTitle>
-                <ItemDescription>{formatDistance(station.distance)}</ItemDescription>
-              </ItemContent>
-              <ItemActions>
-                <span className="text-lg font-semibold tabular-nums">
-                  {formatPrice(station.price)}
-                </span>
-              </ItemActions>
-            </Item>
+            <StationItem key={station.id} station={station} />
           ))}
         </ItemGroup>
       );

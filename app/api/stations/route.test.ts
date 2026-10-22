@@ -67,13 +67,53 @@ test("주유소를 가격이 싼 순서로, 같은 가격이면 가까운 순서
   const res = await GET(request("lat=37.4979&lng=127.0276"));
 
   expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({
-    stations: [
-      { id: "C", name: "가까운싼주유소", price: 1650, distance: 820.2 },
-      { id: "B", name: "먼싼주유소", price: 1650, distance: 1500.5 },
-      { id: "A", name: "비싼주유소", price: 1799, distance: 300 },
-    ],
-  });
+  const { stations } = await res.json();
+  expect(
+    stations.map(({ id, name, price, distance }: Record<string, unknown>) => ({
+      id,
+      name,
+      price,
+      distance,
+    }))
+  ).toEqual([
+    { id: "C", name: "가까운싼주유소", price: 1650, distance: 820.2 },
+    { id: "B", name: "먼싼주유소", price: 1650, distance: 1500.5 },
+    { id: "A", name: "비싼주유소", price: 1799, distance: 300 },
+  ]);
+});
+
+test("주유소 위치를 오피넷 KATEC 좌표에서 위도·경도로 바꿔 돌려준다", async () => {
+  fetchMock.mockResolvedValue(
+    opinetResponse([
+      {
+        UNI_ID: "A0009879",
+        OS_NM: "SK서광주유소",
+        PRICE: 1890,
+        DISTANCE: 771,
+        // Opinet's documented KATEC coordinates for this station (역삼동).
+        GIS_X_COOR: 314871.8,
+        GIS_Y_COOR: 544012.0,
+      },
+    ])
+  );
+
+  const res = await GET(request("lat=37.4979&lng=127.0276"));
+
+  const [station] = (await res.json()).stations;
+  expect(station.lat).toBeCloseTo(37.4943, 3);
+  expect(station.lng).toBeCloseTo(127.0351, 3);
+});
+
+test("좌표가 없는 주유소도 목록에 남기고 위치만 비워 둔다", async () => {
+  fetchMock.mockResolvedValue(
+    opinetResponse([{ UNI_ID: "A", OS_NM: "좌표없음", PRICE: 1700, DISTANCE: 500 }])
+  );
+
+  const res = await GET(request("lat=37.4979&lng=127.0276"));
+
+  expect(res.status).toBe(200);
+  const [station] = (await res.json()).stations;
+  expect(station).toMatchObject({ id: "A", lat: null, lng: null });
 });
 
 test("2km를 넘는 주유소는 목록에서 뺀다", async () => {

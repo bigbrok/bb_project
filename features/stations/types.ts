@@ -13,6 +13,9 @@ export type Station = {
   price: number;
   /** Meters from the search position. */
   distance: number;
+  /** WGS84 position of the station; null when Opinet gives no coordinates. */
+  lat: number | null;
+  lng: number | null;
 };
 
 export function isFuelType(value: string): value is FuelType {

@@ -21,7 +21,19 @@ type OpinetStation = {
   OS_NM: string;
   PRICE: number | string;
   DISTANCE: number | string;
+  GIS_X_COOR: number | string;
+  GIS_Y_COOR: number | string;
 };
+
+function toWgs84(x: unknown, y: unknown) {
+  const katec = [Number(x), Number(y)];
+  // Number(undefined) is NaN and Number(null) is 0; both mean "no position".
+  if (x == null || y == null || !katec.every(Number.isFinite)) {
+    return { lat: null, lng: null };
+  }
+  const [lng, lat] = proj4(KATEC, "WGS84", katec);
+  return { lat, lng };
+}
 
 export async function searchNearbyStations(
   position: { lat: number; lng: number },
@@ -60,6 +72,7 @@ export async function searchNearbyStations(
       name: String(item.OS_NM),
       price: Number(item.PRICE),
       distance: Number(item.DISTANCE),
+      ...toWgs84(item.GIS_X_COOR, item.GIS_Y_COOR),
     }))
     .filter((station) => station.distance <= SEARCH_RADIUS_METERS)
     .sort((a, b) => a.price - b.price || a.distance - b.distance);
