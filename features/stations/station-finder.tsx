@@ -30,6 +30,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { formatDistance, formatPrice } from "./format";
+import { PlaceSearchForm } from "@/features/places/place-search-form";
+
 import { LocationPicker, type PickedPosition } from "./location-picker";
 import { kakaoMapLink, kakaoMapUrl } from "./map-link";
 import {
@@ -58,15 +60,23 @@ type SearchState =
 type SearchOrigin =
   | { kind: "current" }
   | { kind: "default" }
-  | ({ kind: "picked" } & PickedPosition);
+  | ({ kind: "picked" } & PickedPosition)
+  | ({ kind: "place"; name: string } & PickedPosition);
 
 const CURRENT_POSITION: SearchOrigin = { kind: "current" };
 
-const ORIGIN_LABELS: Record<SearchOrigin["kind"], string> = {
-  current: "현재 위치",
-  default: DEFAULT_PLACE.name,
-  picked: "고른 위치",
-};
+function originLabel(origin: SearchOrigin) {
+  switch (origin.kind) {
+    case "current":
+      return "현재 위치";
+    case "default":
+      return DEFAULT_PLACE.name;
+    case "picked":
+      return "고른 위치";
+    case "place":
+      return origin.name;
+  }
+}
 
 function getPosition() {
   return new Promise<GeolocationPosition>((resolve, reject) => {
@@ -92,8 +102,8 @@ async function findStations(
 ): Promise<{ state: SearchState; origin: SearchOrigin; position: PickedPosition }> {
   let position: PickedPosition = DEFAULT_PLACE;
   let usedOrigin = origin;
-  if (origin.kind === "picked") {
-    position = origin;
+  if (origin.kind === "picked" || origin.kind === "place") {
+    position = { lat: origin.lat, lng: origin.lng };
   } else if (origin.kind === "current") {
     try {
       const { coords } = await getPosition();
@@ -180,16 +190,23 @@ export function StationFinder() {
         <h1 className="font-heading text-2xl font-semibold tracking-tight">
           근처 최저가 주유소
         </h1>
+        {state.kind !== "picking" && (
+          <div className="py-2">
+            <PlaceSearchForm
+              onFound={(place, query) => searchFrom({ kind: "place", name: query, ...place })}
+            />
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-x-3">
           <p className="text-sm text-muted-foreground">
-            {ORIGIN_LABELS[origin.kind]} 반경 2km · 가격 낮은 순
+            {originLabel(origin)} 반경 2km · 가격 낮은 순
           </p>
           {state.kind === "done" && searchedAt && (
             <a
-              href={kakaoMapLink(ORIGIN_LABELS[origin.kind], searchedAt.lat, searchedAt.lng)}
+              href={kakaoMapLink(originLabel(origin), searchedAt.lat, searchedAt.lng)}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label={`${ORIGIN_LABELS[origin.kind]} 지도에서 보기 (새 탭)`}
+              aria-label={`${originLabel(origin)} 지도에서 보기 (새 탭)`}
               className={buttonVariants({ variant: "link", size: "sm", className: "px-0" })}
             >
               <MapPinIcon data-icon="inline-start" />
@@ -197,6 +214,19 @@ export function StationFinder() {
             </a>
           )}
         </div>
+        {origin.kind === "place" && (
+          <p className="text-xs text-muted-foreground">
+            장소 검색:{" "}
+            <a
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2"
+            >
+              © OpenStreetMap contributors
+            </a>
+          </p>
+        )}
         {origin.kind === "default" && (
           <p className="flex items-center gap-2 text-sm">
             <MapPinOffIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />

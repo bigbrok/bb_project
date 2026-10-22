@@ -5,3 +5,4 @@
 - [ui-composition](ui-composition.md) — Read when choosing UI components, page composition, visual tokens, or custom interface boundaries.
 - [fuel-price-source](fuel-price-source.md) — Read when fetching, changing, or adding sources for gas station prices or station lists.
 - [map-provider](map-provider.md) — Read when showing a map in the app or linking out to a map.
+- [place-search](place-search.md) — Read when turning a place name or address into coordinates.
