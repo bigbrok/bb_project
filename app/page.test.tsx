@@ -12,7 +12,7 @@ test("홈 화면은 근처 최저가 주유소 찾기를 보여준다", () => {
   render(<Home />);
 
   expect(
-    screen.getByRole("heading", { level: 1, name: "근처 최저가 주유소" })
+    screen.getByRole("heading", { level: 1, name: "근처 최저가 주유소 찾기" })
   ).toBeInTheDocument();
 
   vi.unstubAllGlobals();

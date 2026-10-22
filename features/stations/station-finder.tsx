@@ -195,7 +195,7 @@ export function StationFinder() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
         <h1 className="font-heading text-2xl font-semibold tracking-tight">
-          근처 최저가 주유소
+          근처 최저가 주유소 찾기
         </h1>
         <div className="py-2">
           <PlaceSearchForm

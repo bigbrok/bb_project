@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "근처 최저가 주유소",
+  title: "근처 최저가 주유소 찾기",
   description: "현재 위치 반경 2km 안의 주유소를 가격이 싼 순서로 보여줍니다.",
 };
 
