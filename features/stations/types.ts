@@ -12,6 +12,26 @@ export type Position = { lat: number; lng: number };
 /** Where searches center when the device's position is unavailable (approximate). */
 export const DEFAULT_PLACE = { name: "마곡나루역", lat: 37.5668, lng: 126.827 };
 
+/** One station in `data/stations.json`, built from Opinet's CSV. */
+export type StationRecord = {
+  id: string;
+  name: string;
+  brand: string;
+  self: boolean;
+  address: string;
+  lat: number;
+  lng: number;
+  /** Won per liter; null when the station does not sell it. */
+  gasoline: number | null;
+  diesel: number | null;
+};
+
+export type StationDataset = {
+  /** The day the prices were downloaded (YYYY-MM-DD); null before the first build. */
+  priceDate: string | null;
+  stations: StationRecord[];
+};
+
 export type Station = {
   id: string;
   name: string;

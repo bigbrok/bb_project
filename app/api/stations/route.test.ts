@@ -1,184 +1,107 @@
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
+
+import type { StationDataset, StationRecord } from "@/features/stations/types";
+
+const dataset = vi.hoisted((): StationDataset => ({ priceDate: "2026-10-22", stations: [] }));
+vi.mock("@/features/stations/station-data", () => ({ stationDataset: dataset }));
 
 import { GET } from "@/app/api/stations/route";
 
-const CERT_KEY = "test-cert-key";
+// The search point. At latitude 37.5 one degree of longitude is about 88.3km,
+// so 0.01° east is about 883m and 0.03° east about 2.65km.
+const ORIGIN = { lat: 37.5, lng: 127 };
 
-function opinetResponse(oil: unknown[]) {
-  return new Response(JSON.stringify({ RESULT: { OIL: oil } }), {
-    headers: { "Content-Type": "application/json" },
-  });
+function record(overrides: Partial<StationRecord>): StationRecord {
+  return {
+    id: "X",
+    name: "주유소",
+    brand: "GS칼텍스",
+    self: false,
+    address: "주소",
+    lat: ORIGIN.lat,
+    lng: ORIGIN.lng,
+    gasoline: 1800,
+    diesel: 1700,
+    ...overrides,
+  };
 }
 
 function request(query: string) {
   return new Request(`http://localhost/api/stations?${query}`);
 }
 
-let fetchMock: ReturnType<typeof vi.fn>;
+function setStations(stations: StationRecord[], priceDate: StationDataset["priceDate"] = "2026-10-22") {
+  dataset.stations = stations;
+  dataset.priceDate = priceDate;
+}
 
-beforeEach(() => {
-  vi.stubEnv("OPINET_API_KEY", CERT_KEY);
-  fetchMock = vi.fn();
-  vi.stubGlobal("fetch", fetchMock);
-});
+beforeEach(() => setStations([]));
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
-});
+test("반경 2km 안의 주유소만 휘발유 가격순으로 돌려주고 가격 기준일을 함께 준다", async () => {
+  setStations([
+    record({ id: "near-cheap", gasoline: 1650, lng: ORIGIN.lng + 0.01 }),
+    record({ id: "far", gasoline: 1500, lng: ORIGIN.lng + 0.03 }),
+    record({ id: "here", gasoline: 1700 }),
+  ]);
 
-test("현재 위치를 KATEC으로 바꿔 반경 2km 휘발유 가격순으로 오피넷을 검색한다", async () => {
-  fetchMock.mockResolvedValue(opinetResponse([]));
-
-  await GET(request("lat=37.4979&lng=127.0276"));
-
-  const url = new URL(fetchMock.mock.calls[0][0]);
-  expect(url.origin + url.pathname).toBe(
-    "https://www.opinet.co.kr/api/aroundAll.do"
-  );
-  expect(url.searchParams.get("radius")).toBe("2000");
-  expect(url.searchParams.get("prodcd")).toBe("B027");
-  expect(url.searchParams.get("sort")).toBe("1");
-  expect(url.searchParams.get("out")).toBe("json");
-  expect(url.searchParams.get("certkey")).toBe(CERT_KEY);
-  // 강남역 근처: 오피넷 예시 좌표(314681.8, 544837)와 같은 지역이다.
-  expect(Number(url.searchParams.get("x"))).toBeCloseTo(314213, -1);
-  expect(Number(url.searchParams.get("y"))).toBeCloseTo(544414, -1);
-});
-
-test("경유를 고르면 경유 코드로 검색한다", async () => {
-  fetchMock.mockResolvedValue(opinetResponse([]));
-
-  await GET(request("lat=37.4979&lng=127.0276&fuel=diesel"));
-
-  const url = new URL(fetchMock.mock.calls[0][0]);
-  expect(url.searchParams.get("prodcd")).toBe("D047");
-});
-
-test("주유소를 가격이 싼 순서로, 같은 가격이면 가까운 순서로 돌려준다", async () => {
-  fetchMock.mockResolvedValue(
-    opinetResponse([
-      { UNI_ID: "A", OS_NM: "비싼주유소", PRICE: 1799, DISTANCE: 300 },
-      { UNI_ID: "B", OS_NM: "먼싼주유소", PRICE: 1650, DISTANCE: 1500.5 },
-      { UNI_ID: "C", OS_NM: "가까운싼주유소", PRICE: 1650, DISTANCE: 820.2 },
-    ])
-  );
-
-  const res = await GET(request("lat=37.4979&lng=127.0276"));
+  const res = await GET(request(`lat=${ORIGIN.lat}&lng=${ORIGIN.lng}`));
 
   expect(res.status).toBe(200);
-  const { stations } = await res.json();
-  expect(
-    stations.map(({ id, name, price, distance }: Record<string, unknown>) => ({
-      id,
-      name,
-      price,
-      distance,
-    }))
-  ).toEqual([
-    { id: "C", name: "가까운싼주유소", price: 1650, distance: 820.2 },
-    { id: "B", name: "먼싼주유소", price: 1650, distance: 1500.5 },
-    { id: "A", name: "비싼주유소", price: 1799, distance: 300 },
+  const body = await res.json();
+  expect(body.priceDate).toBe("2026-10-22");
+  expect(body.stations.map((s: { id: string }) => s.id)).toEqual(["near-cheap", "here"]);
+  expect(body.stations[0].distance).toBeGreaterThan(870);
+  expect(body.stations[0].distance).toBeLessThan(895);
+  expect(body.stations[1].distance).toBe(0);
+});
+
+test("목록 항목은 이름·가격·거리·좌표를 담는다", async () => {
+  setStations([record({ id: "A", name: "평창주유소", gasoline: 1999, lat: 37.501, lng: 127 })]);
+
+  const res = await GET(request(`lat=${ORIGIN.lat}&lng=${ORIGIN.lng}`));
+
+  const [station] = (await res.json()).stations;
+  expect(station).toMatchObject({ id: "A", name: "평창주유소", price: 1999, lat: 37.501, lng: 127 });
+  // 0.001° of latitude is about 111m.
+  expect(station.distance).toBeCloseTo(111.2, 0);
+});
+
+test("경유를 고르면 경유 가격으로 정렬하고, 같은 가격이면 가까운 곳을 먼저 둔다", async () => {
+  setStations([
+    record({ id: "far-same", diesel: 1600, lng: ORIGIN.lng + 0.015 }),
+    record({ id: "near-same", diesel: 1600, lng: ORIGIN.lng + 0.005 }),
+    record({ id: "pricier", diesel: 1650 }),
+  ]);
+
+  const res = await GET(request(`lat=${ORIGIN.lat}&lng=${ORIGIN.lng}&fuel=diesel`));
+
+  const body = await res.json();
+  expect(body.stations.map((s: { id: string; price: number }) => [s.id, s.price])).toEqual([
+    ["near-same", 1600],
+    ["far-same", 1600],
+    ["pricier", 1650],
   ]);
 });
 
-test("주유소 위치를 오피넷 KATEC 좌표에서 위도·경도로 바꿔 돌려준다", async () => {
-  fetchMock.mockResolvedValue(
-    opinetResponse([
-      {
-        UNI_ID: "A0009879",
-        OS_NM: "SK서광주유소",
-        PRICE: 1890,
-        DISTANCE: 771,
-        // Opinet's documented KATEC coordinates for this station (역삼동).
-        GIS_X_COOR: 314871.8,
-        GIS_Y_COOR: 544012.0,
-      },
-    ])
-  );
+test("그 기름을 팔지 않는 주유소는 목록에서 뺀다", async () => {
+  setStations([record({ id: "no-diesel", diesel: null }), record({ id: "diesel", diesel: 1700 })]);
 
-  const res = await GET(request("lat=37.4979&lng=127.0276"));
+  const res = await GET(request(`lat=${ORIGIN.lat}&lng=${ORIGIN.lng}&fuel=diesel`));
 
-  const [station] = (await res.json()).stations;
-  expect(station.lat).toBeCloseTo(37.4943, 3);
-  expect(station.lng).toBeCloseTo(127.0351, 3);
-});
-
-test("좌표가 없는 주유소도 목록에 남기고 위치만 비워 둔다", async () => {
-  fetchMock.mockResolvedValue(
-    opinetResponse([{ UNI_ID: "A", OS_NM: "좌표없음", PRICE: 1700, DISTANCE: 500 }])
-  );
-
-  const res = await GET(request("lat=37.4979&lng=127.0276"));
-
-  expect(res.status).toBe(200);
-  const [station] = (await res.json()).stations;
-  expect(station).toMatchObject({ id: "A", lat: null, lng: null });
-});
-
-test("2km를 넘는 주유소는 목록에서 뺀다", async () => {
-  fetchMock.mockResolvedValue(
-    opinetResponse([
-      { UNI_ID: "A", OS_NM: "안쪽", PRICE: 1700, DISTANCE: 1999 },
-      { UNI_ID: "B", OS_NM: "바깥", PRICE: 1600, DISTANCE: 2000.1 },
-    ])
-  );
-
-  const res = await GET(request("lat=37.4979&lng=127.0276"));
-
-  const body = await res.json();
-  expect(body.stations.map((s: { id: string }) => s.id)).toEqual(["A"]);
+  expect((await res.json()).stations.map((s: { id: string }) => s.id)).toEqual(["diesel"]);
 });
 
 test("근처에 주유소가 없으면 빈 목록을 돌려준다", async () => {
-  fetchMock.mockResolvedValue(opinetResponse([]));
+  setStations([record({ id: "far", lat: 35.1, lng: 129 })]);
 
-  const res = await GET(request("lat=37.4979&lng=127.0276"));
+  const res = await GET(request(`lat=${ORIGIN.lat}&lng=${ORIGIN.lng}`));
 
   expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({ stations: [] });
+  expect(await res.json()).toEqual({ stations: [], priceDate: "2026-10-22" });
 });
 
-test("오피넷 응답이 실패하면 502를 돌려주고 인증키를 드러내지 않는다", async () => {
-  fetchMock.mockResolvedValue(
-    new Response(`error certkey=${CERT_KEY}`, { status: 500 })
-  );
-
-  const res = await GET(request("lat=37.4979&lng=127.0276"));
-
-  expect(res.status).toBe(502);
-  expect(await res.text()).not.toContain(CERT_KEY);
-});
-
-test("오피넷 응답 형식이 예상과 다르면 502를 돌려준다", async () => {
-  fetchMock.mockResolvedValue(new Response("호출 한도를 초과했습니다"));
-
-  const res = await GET(request("lat=37.4979&lng=127.0276"));
-
-  expect(res.status).toBe(502);
-});
-
-test("네트워크 오류가 나도 502를 돌려준다", async () => {
-  fetchMock.mockRejectedValue(new TypeError("fetch failed"));
-
-  const res = await GET(request("lat=37.4979&lng=127.0276"));
-
-  expect(res.status).toBe(502);
-});
-
-test("위치나 기름 종류가 올바르지 않으면 400을 돌려주고 오피넷을 부르지 않는다", async () => {
-  for (const query of ["lng=127.0276", "lat=abc&lng=127", "lat=37&lng=127&fuel=lpg"]) {
-    const res = await GET(request(query));
-    expect(res.status).toBe(400);
+test("위치나 기름 종류가 올바르지 않으면 400을 돌려준다", async () => {
+  for (const query of ["lng=127", "lat=abc&lng=127", "lat=37&lng=127&fuel=lpg"]) {
+    expect((await GET(request(query))).status).toBe(400);
   }
-  expect(fetchMock).not.toHaveBeenCalled();
-});
-
-test("인증키가 설정되지 않으면 500을 돌려준다", async () => {
-  vi.stubEnv("OPINET_API_KEY", "");
-
-  const res = await GET(request("lat=37.4979&lng=127.0276"));
-
-  expect(res.status).toBe(500);
-  expect(fetchMock).not.toHaveBeenCalled();
 });

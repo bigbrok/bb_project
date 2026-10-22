@@ -291,3 +291,19 @@ test("현재 위치 기준 목록에서는 지도에서 보기가 현재 위치�
     `https://map.kakao.com/link/map/${encodeURIComponent("현재 위치")},37.4979,127.0276`
   );
 });
+
+test("목록 위에 가격 기준일을 보여 준다", async () => {
+  allowLocation();
+  fetchMock.mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        stations: [{ id: "A", name: "주유소", price: 1500, distance: 100 }],
+        priceDate: "2026-10-22",
+      })
+    )
+  );
+
+  render(<StationFinder />);
+
+  expect(await screen.findByText("가격 기준일 2026-10-22")).toBeInTheDocument();
+});

@@ -51,7 +51,7 @@ const FUEL_LABELS: Record<FuelType, string> = {
 type SearchState =
   | { kind: "loading" }
   | { kind: "price-error" }
-  | { kind: "done"; stations: Station[] };
+  | { kind: "done"; stations: Station[]; priceDate: string | null };
 
 /**
  * Where a search is centered: the device's position, the default place used
@@ -127,9 +127,9 @@ async function findStations(
   try {
     const res = await fetch(`/api/stations?${params}`);
     if (!res.ok) throw new Error(`Search failed: ${res.status}`);
-    const body = (await res.json()) as { stations: Station[] };
+    const body = (await res.json()) as { stations: Station[]; priceDate?: string | null };
     return {
-      state: { kind: "done", stations: body.stations },
+      state: { kind: "done", stations: body.stations, priceDate: body.priceDate ?? null },
       origin: usedOrigin,
       position,
     };
@@ -219,6 +219,9 @@ export function StationFinder() {
             </a>
           )}
         </div>
+        {state.kind === "done" && state.priceDate && (
+          <p className="text-xs text-muted-foreground">가격 기준일 {state.priceDate}</p>
+        )}
         {origin.kind === "place" && (
           <p className="text-xs text-muted-foreground">
             장소 검색:{" "}

@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "stations:build": "bun scripts/build-stations.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -19,7 +20,6 @@
     "leaflet": "1.9.4",
     "lucide-react": "^1.28.0",
     "next": "16.3.0",
-    "proj4": "2.22.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "shadcn": "^4.22.1",
